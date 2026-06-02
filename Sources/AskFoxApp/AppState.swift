@@ -55,19 +55,24 @@ final class AppState: ObservableObject {
     }
 
     private func makeClient() -> OpenAIClient {
-        let chatKey: String
-        let chatURL: URL
-        switch settings.chatProvider {
-        case .openai:
-            chatKey = apiKey
-            chatURL = ChatProvider.openai.baseURL
-        case .deepseek:
-            chatKey = deepseekKey
-            chatURL = ChatProvider.deepseek.baseURL
+        let embedKey: String
+        switch settings.embeddingsProvider {
+        case .openai: embedKey = apiKey
+        case .lmstudio: embedKey = ""
         }
+        let embedURL = settings.embeddingsProvider.baseURL(lmStudioOverride: settings.lmStudioBaseURL)
+
+        let chatKey: String
+        switch settings.chatProvider {
+        case .openai: chatKey = apiKey
+        case .deepseek: chatKey = deepseekKey
+        case .lmstudio: chatKey = ""
+        }
+        let chatURL = settings.chatProvider.baseURL(lmStudioOverride: settings.lmStudioBaseURL)
 
         return OpenAIClient(
-            apiKey: apiKey,
+            apiKey: embedKey,
+            baseURL: embedURL,
             embeddingModel: settings.embeddingModel,
             chatModel: settings.chatModel,
             chatAPIKey: chatKey,
@@ -78,12 +83,8 @@ final class AppState: ObservableObject {
     func ask() {
         let q = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else { return }
-        guard !apiKey.isEmpty else {
-            lastError = "Set your OpenAI API key in Settings first (needed for embeddings)."
-            return
-        }
-        if settings.chatProvider == .deepseek && deepseekKey.isEmpty {
-            lastError = "Chat provider is DeepSeek but no DeepSeek key is set. Add one or switch to OpenAI."
+        if let blocker = providerBlocker() {
+            lastError = blocker
             return
         }
 
@@ -114,8 +115,8 @@ final class AppState: ObservableObject {
     }
 
     func reindex() {
-        guard !apiKey.isEmpty else {
-            lastError = "Set your OpenAI API key in Settings first."
+        if let blocker = providerBlocker(chatRequired: false) {
+            lastError = blocker
             return
         }
 
@@ -150,6 +151,30 @@ final class AppState: ObservableObject {
                 }
             }
         }
+    }
+
+    private func providerBlocker(chatRequired: Bool = true) -> String? {
+        switch settings.embeddingsProvider {
+        case .openai where apiKey.isEmpty:
+            return "Embeddings provider is OpenAI but no OpenAI key is set."
+        case .lmstudio where settings.lmStudioBaseURL.isEmpty:
+            return "Embeddings provider is LM Studio but no endpoint is set."
+        default:
+            break
+        }
+        if chatRequired {
+            switch settings.chatProvider {
+            case .openai where apiKey.isEmpty:
+                return "Chat provider is OpenAI but no OpenAI key is set."
+            case .deepseek where deepseekKey.isEmpty:
+                return "Chat provider is DeepSeek but no DeepSeek key is set."
+            case .lmstudio where settings.lmStudioBaseURL.isEmpty:
+                return "Chat provider is LM Studio but no endpoint is set."
+            default:
+                break
+            }
+        }
+        return nil
     }
 
     func openInObsidian(path: String) {

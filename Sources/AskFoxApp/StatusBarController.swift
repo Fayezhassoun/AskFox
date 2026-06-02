@@ -45,17 +45,41 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         deepseekItem.target = self
         menu.addItem(deepseekItem)
 
-        let providerMenu = NSMenu(title: "Chat Provider")
+        let chatMenu = NSMenu(title: "Chat Provider")
         for provider in ChatProvider.allCases {
             let item = NSMenuItem(title: provider.displayName, action: #selector(selectChatProvider(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = provider.rawValue
             item.state = (state.settings.chatProvider == provider) ? .on : .off
-            providerMenu.addItem(item)
+            chatMenu.addItem(item)
         }
-        let providerParent = NSMenuItem(title: "Chat Provider: \(state.settings.chatProvider.displayName) (\(state.settings.chatModel))", action: nil, keyEquivalent: "")
-        providerParent.submenu = providerMenu
-        menu.addItem(providerParent)
+        let chatParent = NSMenuItem(title: "Chat Provider: \(state.settings.chatProvider.displayName) (\(state.settings.chatModel))", action: nil, keyEquivalent: "")
+        chatParent.submenu = chatMenu
+        menu.addItem(chatParent)
+
+        let embedMenu = NSMenu(title: "Embeddings Provider")
+        for provider in EmbeddingsProvider.allCases {
+            let item = NSMenuItem(title: provider.displayName, action: #selector(selectEmbeddingsProvider(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = provider.rawValue
+            item.state = (state.settings.embeddingsProvider == provider) ? .on : .off
+            embedMenu.addItem(item)
+        }
+        let embedParent = NSMenuItem(title: "Embeddings Provider: \(state.settings.embeddingsProvider.displayName) (\(state.settings.embeddingModel))", action: nil, keyEquivalent: "")
+        embedParent.submenu = embedMenu
+        menu.addItem(embedParent)
+
+        let lmItem = NSMenuItem(title: "LM Studio Endpoint: \(state.settings.lmStudioBaseURL)", action: #selector(promptLMStudioURL), keyEquivalent: "")
+        lmItem.target = self
+        menu.addItem(lmItem)
+
+        let chatModelItem = NSMenuItem(title: "Chat Model…", action: #selector(promptChatModel), keyEquivalent: "")
+        chatModelItem.target = self
+        menu.addItem(chatModelItem)
+
+        let embedModelItem = NSMenuItem(title: "Embedding Model…", action: #selector(promptEmbeddingModel), keyEquivalent: "")
+        embedModelItem.target = self
+        menu.addItem(embedModelItem)
 
         let vault = NSMenuItem(title: "Vault: \(state.settings.vaultPath)", action: #selector(promptVaultPath), keyEquivalent: "")
         vault.target = self
@@ -123,6 +147,71 @@ final class StatusBarController: NSObject, NSMenuDelegate {
             return
         }
         state.settings.chatProvider = provider
+    }
+
+    @objc private func selectEmbeddingsProvider(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let provider = EmbeddingsProvider(rawValue: raw) else {
+            return
+        }
+        state.settings.embeddingsProvider = provider
+    }
+
+    @objc private func promptLMStudioURL() {
+        promptText(
+            title: "LM Studio Endpoint",
+            info: "OpenAI-compatible base URL. Default: http://localhost:1234/v1",
+            current: state.settings.lmStudioBaseURL
+        ) { value in
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                state.settings.lmStudioBaseURL = trimmed
+            }
+        }
+    }
+
+    @objc private func promptChatModel() {
+        promptText(
+            title: "Chat Model",
+            info: "Model identifier the chat provider expects. LM Studio accepts any name when one chat model is loaded.",
+            current: state.settings.chatModel
+        ) { value in
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                state.settings.chatModel = trimmed
+                UserDefaults.standard.set(trimmed, forKey: "chatModel")
+            }
+        }
+    }
+
+    @objc private func promptEmbeddingModel() {
+        promptText(
+            title: "Embedding Model",
+            info: "Model identifier for embeddings. LM Studio example: nomic-embed-text-v1.5",
+            current: state.settings.embeddingModel
+        ) { value in
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                state.settings.embeddingModel = trimmed
+                UserDefaults.standard.set(trimmed, forKey: "embeddingModel")
+            }
+        }
+    }
+
+    private func promptText(title: String, info: String, current: String, save: (String) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = info
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 360, height: 24))
+        input.stringValue = current
+        alert.accessoryView = input
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            save(input.stringValue)
+        }
     }
 
     @objc private func promptVaultPath() {

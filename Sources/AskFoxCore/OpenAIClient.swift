@@ -48,13 +48,14 @@ public struct OpenAIClient: Sendable {
     }
 
     public func embed(_ inputs: [String]) async throws -> [[Float]] {
-        guard !apiKey.isEmpty else { throw OpenAIError.missingAPIKey }
         guard !inputs.isEmpty else { return [] }
 
         let url = baseURL.appendingPathComponent("embeddings")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        if !apiKey.isEmpty {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let body: [String: Any] = [
@@ -80,12 +81,12 @@ public struct OpenAIClient: Sendable {
     }
 
     public func chat(systemPrompt: String, userPrompt: String, temperature: Double = 0.2) async throws -> String {
-        guard !chatAPIKey.isEmpty else { throw OpenAIError.missingAPIKey }
-
         let url = chatBaseURL.appendingPathComponent("chat/completions")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("Bearer \(chatAPIKey)", forHTTPHeaderField: "Authorization")
+        if !chatAPIKey.isEmpty {
+            request.setValue("Bearer \(chatAPIKey)", forHTTPHeaderField: "Authorization")
+        }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let body: [String: Any] = [
