@@ -4,6 +4,7 @@ import Security
 enum KeychainStore {
     static let serviceName = "AskFox"
     static let apiKeyAccount = "openai_api_key"
+    static let deepseekAccount = "deepseek_api_key"
 
     static func save(_ value: String, account: String = apiKeyAccount) throws {
         let data = Data(value.utf8)

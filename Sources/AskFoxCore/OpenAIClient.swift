@@ -25,6 +25,8 @@ public struct OpenAIClient: Sendable {
     public let baseURL: URL
     public let embeddingModel: String
     public let chatModel: String
+    public let chatAPIKey: String
+    public let chatBaseURL: URL
     public let session: URLSession
 
     public init(
@@ -32,12 +34,16 @@ public struct OpenAIClient: Sendable {
         baseURL: URL = URL(string: "https://api.openai.com/v1")!,
         embeddingModel: String = "text-embedding-3-small",
         chatModel: String = "gpt-4o-mini",
+        chatAPIKey: String? = nil,
+        chatBaseURL: URL? = nil,
         session: URLSession = .shared
     ) {
         self.apiKey = apiKey
         self.baseURL = baseURL
         self.embeddingModel = embeddingModel
         self.chatModel = chatModel
+        self.chatAPIKey = chatAPIKey ?? apiKey
+        self.chatBaseURL = chatBaseURL ?? baseURL
         self.session = session
     }
 
@@ -74,12 +80,12 @@ public struct OpenAIClient: Sendable {
     }
 
     public func chat(systemPrompt: String, userPrompt: String, temperature: Double = 0.2) async throws -> String {
-        guard !apiKey.isEmpty else { throw OpenAIError.missingAPIKey }
+        guard !chatAPIKey.isEmpty else { throw OpenAIError.missingAPIKey }
 
-        let url = baseURL.appendingPathComponent("chat/completions")
+        let url = chatBaseURL.appendingPathComponent("chat/completions")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(chatAPIKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let body: [String: Any] = [

@@ -14,12 +14,14 @@ final class AppState: ObservableObject {
 
     let settings: AppSettings
     private(set) var apiKey: String
+    private(set) var deepseekKey: String
 
     private var currentTask: Task<Void, Never>?
 
     init(settings: AppSettings) {
         self.settings = settings
         self.apiKey = KeychainStore.load() ?? ""
+        self.deepseekKey = KeychainStore.load(account: KeychainStore.deepseekAccount) ?? ""
     }
 
     func setAPIKey(_ value: String) {
@@ -37,11 +39,39 @@ final class AppState: ObservableObject {
         }
     }
 
+    func setDeepSeekKey(_ value: String) {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            if trimmed.isEmpty {
+                try KeychainStore.delete(account: KeychainStore.deepseekAccount)
+            } else {
+                try KeychainStore.save(trimmed, account: KeychainStore.deepseekAccount)
+            }
+            deepseekKey = trimmed
+            lastError = nil
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
     private func makeClient() -> OpenAIClient {
-        OpenAIClient(
+        let chatKey: String
+        let chatURL: URL
+        switch settings.chatProvider {
+        case .openai:
+            chatKey = apiKey
+            chatURL = ChatProvider.openai.baseURL
+        case .deepseek:
+            chatKey = deepseekKey
+            chatURL = ChatProvider.deepseek.baseURL
+        }
+
+        return OpenAIClient(
             apiKey: apiKey,
             embeddingModel: settings.embeddingModel,
-            chatModel: settings.chatModel
+            chatModel: settings.chatModel,
+            chatAPIKey: chatKey,
+            chatBaseURL: chatURL
         )
     }
 
@@ -49,7 +79,11 @@ final class AppState: ObservableObject {
         let q = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else { return }
         guard !apiKey.isEmpty else {
-            lastError = "Set your OpenAI API key in Settings first."
+            lastError = "Set your OpenAI API key in Settings first (needed for embeddings)."
+            return
+        }
+        if settings.chatProvider == .deepseek && deepseekKey.isEmpty {
+            lastError = "Chat provider is DeepSeek but no DeepSeek key is set. Add one or switch to OpenAI."
             return
         }
 

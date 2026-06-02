@@ -35,10 +35,27 @@ final class StatusBarController: NSObject, NSMenuDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
-        let key = state.apiKey.isEmpty ? "Set OpenAI API Key…" : "Change OpenAI API Key…"
-        let keyItem = NSMenuItem(title: key, action: #selector(promptAPIKey), keyEquivalent: "")
-        keyItem.target = self
-        menu.addItem(keyItem)
+        let openaiTitle = state.apiKey.isEmpty ? "Set OpenAI API Key…" : "Change OpenAI API Key…"
+        let openaiItem = NSMenuItem(title: openaiTitle, action: #selector(promptAPIKey), keyEquivalent: "")
+        openaiItem.target = self
+        menu.addItem(openaiItem)
+
+        let deepseekTitle = state.deepseekKey.isEmpty ? "Set DeepSeek API Key…" : "Change DeepSeek API Key…"
+        let deepseekItem = NSMenuItem(title: deepseekTitle, action: #selector(promptDeepSeekKey), keyEquivalent: "")
+        deepseekItem.target = self
+        menu.addItem(deepseekItem)
+
+        let providerMenu = NSMenu(title: "Chat Provider")
+        for provider in ChatProvider.allCases {
+            let item = NSMenuItem(title: provider.displayName, action: #selector(selectChatProvider(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = provider.rawValue
+            item.state = (state.settings.chatProvider == provider) ? .on : .off
+            providerMenu.addItem(item)
+        }
+        let providerParent = NSMenuItem(title: "Chat Provider: \(state.settings.chatProvider.displayName) (\(state.settings.chatModel))", action: nil, keyEquivalent: "")
+        providerParent.submenu = providerMenu
+        menu.addItem(providerParent)
 
         let vault = NSMenuItem(title: "Vault: \(state.settings.vaultPath)", action: #selector(promptVaultPath), keyEquivalent: "")
         vault.target = self
@@ -69,19 +86,43 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     }
 
     @objc private func promptAPIKey() {
+        promptKey(
+            title: "OpenAI API Key",
+            info: "Used for embeddings (required) and OpenAI chat. Stored in macOS Keychain. Leave blank to remove.",
+            current: state.apiKey
+        ) { state.setAPIKey($0) }
+    }
+
+    @objc private func promptDeepSeekKey() {
+        promptKey(
+            title: "DeepSeek API Key",
+            info: "Used when Chat Provider is DeepSeek. Stored in macOS Keychain. Leave blank to remove.",
+            current: state.deepseekKey
+        ) { state.setDeepSeekKey($0) }
+    }
+
+    private func promptKey(title: String, info: String, current: String, save: (String) -> Void) {
         let alert = NSAlert()
-        alert.messageText = "OpenAI API Key"
-        alert.informativeText = "Stored in macOS Keychain. Leave blank to remove."
+        alert.messageText = title
+        alert.informativeText = info
         alert.addButton(withTitle: "Save")
         alert.addButton(withTitle: "Cancel")
 
-        let input = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
-        input.stringValue = state.apiKey
+        let input = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 360, height: 24))
+        input.stringValue = current
         alert.accessoryView = input
 
         if alert.runModal() == .alertFirstButtonReturn {
-            state.setAPIKey(input.stringValue)
+            save(input.stringValue)
         }
+    }
+
+    @objc private func selectChatProvider(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let provider = ChatProvider(rawValue: raw) else {
+            return
+        }
+        state.settings.chatProvider = provider
     }
 
     @objc private func promptVaultPath() {
