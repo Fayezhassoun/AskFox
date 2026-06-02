@@ -13,6 +13,7 @@ final class AppState: ObservableObject {
     @Published var indexStatus: String = ""
 
     let settings: AppSettings
+    private let cache = AnswerCache(limit: 200)
 
     private var currentTask: Task<Void, Never>?
 
@@ -41,29 +42,52 @@ final class AppState: ObservableObject {
         }
 
         currentTask?.cancel()
-        isAnswering = true
         answer = ""
         citations = []
         lastError = nil
+
+        // Fast path: exact-match cache hit. Skip the network entirely.
+        if let hit = cache.get(q) {
+            answer = hit.answer
+            citations = hit.citations
+            return
+        }
+
+        isAnswering = true
 
         currentTask = Task { [weak self] in
             guard let self else { return }
             do {
                 let store = try VectorStore.defaultStore()
                 let engine = AnswerEngine(client: makeClient(), store: store, topK: settings.topK)
-                let result = try await engine.answer(q)
-                await MainActor.run {
-                    self.answer = result.answer
-                    self.citations = result.citations
-                    self.isAnswering = false
-                }
+                let (assembled, citations) = try await self.runStream(engine: engine, question: q)
+                self.cache.put(q, answer: assembled, citations: citations)
+                self.isAnswering = false
+            } catch is CancellationError {
+                self.isAnswering = false
             } catch {
-                await MainActor.run {
-                    self.lastError = error.localizedDescription
-                    self.isAnswering = false
-                }
+                self.lastError = error.localizedDescription
+                self.isAnswering = false
             }
         }
+    }
+
+    private func runStream(engine: AnswerEngine, question: String) async throws -> (answer: String, citations: [Citation]) {
+        var assembled = ""
+        var lastCitations: [Citation] = []
+        for try await event in engine.answerStream(question) {
+            switch event {
+            case .retrieved(let cits):
+                lastCitations = cits
+                self.citations = cits
+            case .token(let t):
+                assembled += t
+                self.answer = assembled
+            case .done(let cits):
+                if !cits.isEmpty { lastCitations = cits }
+            }
+        }
+        return (assembled, lastCitations)
     }
 
     func reindex() {
