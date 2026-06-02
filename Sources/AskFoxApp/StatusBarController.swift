@@ -35,51 +35,17 @@ final class StatusBarController: NSObject, NSMenuDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
-        let openaiTitle = state.apiKey.isEmpty ? "Set OpenAI API Key…" : "Change OpenAI API Key…"
-        let openaiItem = NSMenuItem(title: openaiTitle, action: #selector(promptAPIKey), keyEquivalent: "")
-        openaiItem.target = self
-        menu.addItem(openaiItem)
+        let endpoint = NSMenuItem(title: "LM Studio Endpoint: \(state.settings.lmStudioBaseURL)", action: #selector(promptLMStudioURL), keyEquivalent: "")
+        endpoint.target = self
+        menu.addItem(endpoint)
 
-        let deepseekTitle = state.deepseekKey.isEmpty ? "Set DeepSeek API Key…" : "Change DeepSeek API Key…"
-        let deepseekItem = NSMenuItem(title: deepseekTitle, action: #selector(promptDeepSeekKey), keyEquivalent: "")
-        deepseekItem.target = self
-        menu.addItem(deepseekItem)
+        let chatModel = NSMenuItem(title: "Chat Model: \(state.settings.chatModel)", action: #selector(promptChatModel), keyEquivalent: "")
+        chatModel.target = self
+        menu.addItem(chatModel)
 
-        let chatMenu = NSMenu(title: "Chat Provider")
-        for provider in ChatProvider.allCases {
-            let item = NSMenuItem(title: provider.displayName, action: #selector(selectChatProvider(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = provider.rawValue
-            item.state = (state.settings.chatProvider == provider) ? .on : .off
-            chatMenu.addItem(item)
-        }
-        let chatParent = NSMenuItem(title: "Chat Provider: \(state.settings.chatProvider.displayName) (\(state.settings.chatModel))", action: nil, keyEquivalent: "")
-        chatParent.submenu = chatMenu
-        menu.addItem(chatParent)
-
-        let embedMenu = NSMenu(title: "Embeddings Provider")
-        for provider in EmbeddingsProvider.allCases {
-            let item = NSMenuItem(title: provider.displayName, action: #selector(selectEmbeddingsProvider(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = provider.rawValue
-            item.state = (state.settings.embeddingsProvider == provider) ? .on : .off
-            embedMenu.addItem(item)
-        }
-        let embedParent = NSMenuItem(title: "Embeddings Provider: \(state.settings.embeddingsProvider.displayName) (\(state.settings.embeddingModel))", action: nil, keyEquivalent: "")
-        embedParent.submenu = embedMenu
-        menu.addItem(embedParent)
-
-        let lmItem = NSMenuItem(title: "LM Studio Endpoint: \(state.settings.lmStudioBaseURL)", action: #selector(promptLMStudioURL), keyEquivalent: "")
-        lmItem.target = self
-        menu.addItem(lmItem)
-
-        let chatModelItem = NSMenuItem(title: "Chat Model…", action: #selector(promptChatModel), keyEquivalent: "")
-        chatModelItem.target = self
-        menu.addItem(chatModelItem)
-
-        let embedModelItem = NSMenuItem(title: "Embedding Model…", action: #selector(promptEmbeddingModel), keyEquivalent: "")
-        embedModelItem.target = self
-        menu.addItem(embedModelItem)
+        let embedModel = NSMenuItem(title: "Embedding Model: \(state.settings.embeddingModel)", action: #selector(promptEmbeddingModel), keyEquivalent: "")
+        embedModel.target = self
+        menu.addItem(embedModel)
 
         let vault = NSMenuItem(title: "Vault: \(state.settings.vaultPath)", action: #selector(promptVaultPath), keyEquivalent: "")
         vault.target = self
@@ -109,58 +75,10 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         state.reindex()
     }
 
-    @objc private func promptAPIKey() {
-        promptKey(
-            title: "OpenAI API Key",
-            info: "Used for embeddings (required) and OpenAI chat. Stored in macOS Keychain. Leave blank to remove.",
-            current: state.apiKey
-        ) { state.setAPIKey($0) }
-    }
-
-    @objc private func promptDeepSeekKey() {
-        promptKey(
-            title: "DeepSeek API Key",
-            info: "Used when Chat Provider is DeepSeek. Stored in macOS Keychain. Leave blank to remove.",
-            current: state.deepseekKey
-        ) { state.setDeepSeekKey($0) }
-    }
-
-    private func promptKey(title: String, info: String, current: String, save: (String) -> Void) {
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = info
-        alert.addButton(withTitle: "Save")
-        alert.addButton(withTitle: "Cancel")
-
-        let input = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 360, height: 24))
-        input.stringValue = current
-        alert.accessoryView = input
-
-        if alert.runModal() == .alertFirstButtonReturn {
-            save(input.stringValue)
-        }
-    }
-
-    @objc private func selectChatProvider(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String,
-              let provider = ChatProvider(rawValue: raw) else {
-            return
-        }
-        state.settings.chatProvider = provider
-    }
-
-    @objc private func selectEmbeddingsProvider(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String,
-              let provider = EmbeddingsProvider(rawValue: raw) else {
-            return
-        }
-        state.settings.embeddingsProvider = provider
-    }
-
     @objc private func promptLMStudioURL() {
         promptText(
             title: "LM Studio Endpoint",
-            info: "OpenAI-compatible base URL. Default: http://localhost:1234/v1",
+            info: "OpenAI-compatible base URL. Default: \(AppSettings.defaultLMStudioBaseURL)",
             current: state.settings.lmStudioBaseURL
         ) { value in
             let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -173,13 +91,12 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     @objc private func promptChatModel() {
         promptText(
             title: "Chat Model",
-            info: "Model identifier the chat provider expects. LM Studio accepts any name when one chat model is loaded.",
+            info: "Model identifier loaded in LM Studio. Example: \(AppSettings.defaultChatModel)",
             current: state.settings.chatModel
         ) { value in
             let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
                 state.settings.chatModel = trimmed
-                UserDefaults.standard.set(trimmed, forKey: "chatModel")
             }
         }
     }
@@ -187,13 +104,12 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     @objc private func promptEmbeddingModel() {
         promptText(
             title: "Embedding Model",
-            info: "Model identifier for embeddings. LM Studio example: nomic-embed-text-v1.5",
+            info: "Embedding model loaded in LM Studio. Example: \(AppSettings.defaultEmbeddingModel)",
             current: state.settings.embeddingModel
         ) { value in
             let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
                 state.settings.embeddingModel = trimmed
-                UserDefaults.standard.set(trimmed, forKey: "embeddingModel")
             }
         }
     }
@@ -205,7 +121,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         alert.addButton(withTitle: "Save")
         alert.addButton(withTitle: "Cancel")
 
-        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 360, height: 24))
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 420, height: 24))
         input.stringValue = current
         alert.accessoryView = input
 

@@ -6,12 +6,6 @@ struct AskFoxIndexMain {
     static func main() async {
         let env = ProcessInfo.processInfo.environment
 
-        let apiKey = env["OPENAI_API_KEY"] ?? ""
-        if apiKey.isEmpty {
-            FileHandle.standardError.write(Data("error: OPENAI_API_KEY is not set\n".utf8))
-            exit(1)
-        }
-
         let vaultPath = env["ASKFOX_VAULT"] ?? (NSHomeDirectory() + "/Documents/Fox")
         let vaultURL = URL(fileURLWithPath: vaultPath, isDirectory: true)
 
@@ -21,16 +15,30 @@ struct AskFoxIndexMain {
             exit(1)
         }
 
-        let embeddingModel = env["ASKFOX_EMBEDDING_MODEL"] ?? "text-embedding-3-small"
-        let chatModel = env["ASKFOX_CHAT_MODEL"] ?? "gpt-4o-mini"
+        let baseURLString = env["ASKFOX_BASE_URL"] ?? "http://localhost:1234/v1"
+        guard let baseURL = URL(string: baseURLString) else {
+            FileHandle.standardError.write(Data("error: invalid base URL \(baseURLString)\n".utf8))
+            exit(1)
+        }
 
-        let client = OpenAIClient(apiKey: apiKey, embeddingModel: embeddingModel, chatModel: chatModel)
+        let embeddingModel = env["ASKFOX_EMBEDDING_MODEL"] ?? "text-embedding-nomic-embed-text-v1.5"
+        let chatModel = env["ASKFOX_CHAT_MODEL"] ?? "google/gemma-4-e4b"
+
+        let client = OpenAIClient(
+            apiKey: "",
+            baseURL: baseURL,
+            embeddingModel: embeddingModel,
+            chatModel: chatModel,
+            chatAPIKey: "",
+            chatBaseURL: baseURL
+        )
 
         do {
             let store = try VectorStore.defaultStore()
             let indexer = VaultIndexer(vaultURL: vaultURL, client: client, store: store)
 
             print("Indexing \(vaultURL.path) → \(store.fileURL.path)")
+            print("Endpoint: \(baseURL.absoluteString) embed=\(embeddingModel)")
             let progress = try await indexer.indexAll { line in
                 print("  " + line)
             }
