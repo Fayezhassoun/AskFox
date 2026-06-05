@@ -1,0 +1,97 @@
+name: Release AskFox
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build release binary
+        run: swift build -c release
+
+      - name: Assemble .app bundle
+        env:
+          APP_NAME: AskFox
+          BUNDLE_ID: com.fox.askfox
+          VERSION: ${{ github.ref_name }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          PKG_DIR=$(pwd)
+          BIN_PATH=$(swift build -c release --show-bin-path)/${APP_NAME}
+          APP_DIR="${PKG_DIR}/.build/${APP_NAME}.app"
+          rm -rf "$APP_DIR"
+          mkdir -p "${APP_DIR}/Contents/MacOS"
+          mkdir -p "${APP_DIR}/Contents/Resources"
+          cp "$BIN_PATH" "${APP_DIR}/Contents/MacOS/${APP_NAME}"
+          chmod +x "${APP_DIR}/Contents/MacOS/${APP_NAME}"
+          cat > "${APP_DIR}/Contents/Info.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key>
+            <string>${APP_NAME}</string>
+            <key>CFBundleDisplayName</key>
+            <string>AskFox</string>
+            <key>CFBundleIdentifier</key>
+            <string>${BUNDLE_ID}</string>
+            <key>CFBundleVersion</key>
+            <string>${BUILD_NUMBER}</string>
+            <key>CFBundleShortVersionString</key>
+            <string>${VERSION}</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleExecutable</key>
+            <string>${APP_NAME}</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>14.0</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+            <key>LSUIElement</key>
+            <true/>
+            <key>NSAppleEventsUsageDescription</key>
+            <string>AskFox needs to open notes in Obsidian when you click a source citation.</string>
+            <key>CFBundleDocumentTypes</key>
+            <array/>
+          </dict>
+          </plist>
+          PLIST
+          cat > "${APP_DIR}/Contents/PkgInfo" <<<"APPL????"
+          codesign --force --deep --sign - "${APP_DIR}"
+
+      - name: Create DMG
+        run: |
+          PKG_DIR=$(pwd)
+          APP_PATH="${PKG_DIR}/.build/AskFox.app"
+          VERSION="${{ github.ref_name }}"
+          STAGE_DIR="${PKG_DIR}/.build/dmg-stage"
+          DMG_PATH="${PKG_DIR}/.build/AskFox-${VERSION}.dmg"
+          rm -rf "$STAGE_DIR"
+          mkdir -p "$STAGE_DIR"
+          cp -R "$APP_PATH" "$STAGE_DIR/AskFox.app"
+          ln -s /Applications "$STAGE_DIR/Applications"
+          hdiutil create \
+            -volname "AskFox ${VERSION}" \
+            -srcfolder "$STAGE_DIR" \
+            -ov \
+            -format UDZO \
+            "$DMG_PATH"
+          rm -rf "$STAGE_DIR"
+          echo "DMG_PATH=${DMG_PATH}" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: .build/AskFox-${{ github.ref_name }}.dmg
+          generate_release_notes: true
+          draft: false
+          prerelease: false
